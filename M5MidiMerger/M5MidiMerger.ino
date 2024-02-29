@@ -121,12 +121,21 @@ void setup()
   }//if (Usb.Init() == -1...
   delay( 200 );
 }
-
 // Function to draw MIDI information on the LCD
 void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::DataByte data2, midi::Channel channel) {
     // Convert MIDI data to hexadecimal strings
     String hexD1 = String(data1, HEX);
     String hexD2 = String(data2, HEX);
+
+    // Calculate color intensity based on data1 and data2 values
+    uint8_t intensity = 128+((data1 + data2) / 2.0) / 127.0 * 255;
+
+    // Calculate actual color based on name length and channel number
+    uint8_t color = (name.length() + channel) % 256;
+
+    // Combine intensity and color to create the final text color
+    uint16_t textColor = (intensity << 8) | color;
+
     if(type != 248){
       // Create a string with MIDI information
       String midiInfo = name + " " +
@@ -136,10 +145,12 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
                         ", Channel: " + String(channel);
   
       yDraw = scroll_line();
-      // Display MIDI information on the LCD
+      // Display MIDI information on the LCD with the calculated text color
+      M5.Lcd.setTextColor(textColor);
       M5.Lcd.drawString(midiInfo.c_str(), 0, yDraw, 2);
     }
 }
+
 
 void loop()
 {
