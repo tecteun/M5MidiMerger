@@ -9,7 +9,7 @@
 
 #define MIDI_BAUDRATE 31250
 #define RXD2 16
-#define TXD2 22 //https://shop.m5stack.com/products/usb-module
+#define TXD2 22 //pin 17 doesnt work together with https://shop.m5stack.com/products/usb-module
 #define RXD1 3
 #define TXD1 1
 
