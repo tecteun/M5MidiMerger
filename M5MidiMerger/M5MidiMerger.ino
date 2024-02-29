@@ -1,9 +1,9 @@
 
 #include <SoftwareSerial.h>
 #include <M5Stack.h>
+#include <usbhub.h>
 #include <MIDI.h>
 #include <UHS2-MIDI.h>
-#include <usbhub.h>
 //https://github.com/TheKikGen/USBMidiKliK
 //send sysex F0 77 77 77 09 F7 to reset interface to serial mode, to flash
 
@@ -18,9 +18,9 @@ USB Usb;
 // support one hub, four midi devices
 USBHub Hub(&Usb);
 UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb);
-UHS2MIDI_CREATE_INSTANCE(&Usb, 1, midiUsb1);
-UHS2MIDI_CREATE_INSTANCE(&Usb, 2, midiUsb2);
-UHS2MIDI_CREATE_INSTANCE(&Usb, 3, midiUsb3);
+UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb1);
+UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb2);
+UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb3);
 
 SoftwareSerial swSerial(RXD2, TXD2);
 
@@ -162,7 +162,8 @@ void loop()
     midiUsb2.send(t, d1, d2, c);
     midiUsb3.send(t, d1, d2, c);
   }
-
+  Usb.Task();
+  
   if (midiUsb1.read())
   {
     //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
@@ -177,7 +178,8 @@ void loop()
     midiUsb2.send(t, d1, d2, c);
     midiUsb3.send(t, d1, d2, c);
   }
-
+  Usb.Task();
+  
   if (midiUsb2.read())
   {
     //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
@@ -192,7 +194,8 @@ void loop()
     midiUsb1.send(t, d1, d2, c);
     midiUsb3.send(t, d1, d2, c);
   }
-
+  Usb.Task();
+  
   if (midiUsb3.read())
   {
     //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
@@ -207,6 +210,7 @@ void loop()
     midiUsb1.send(t, d1, d2, c);
     midiUsb2.send(t, d1, d2, c);
   }
+  Usb.Task();
   
   if (midiA.read())
   {
@@ -219,6 +223,7 @@ void loop()
     midiB.send(t, d1, d2, c);
     midiUsb.send(t, d1, d2, c);
   }
+  Usb.Task();
   
   if (midiB.read())
   {
