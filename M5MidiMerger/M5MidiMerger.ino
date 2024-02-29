@@ -85,6 +85,7 @@ void setup()
   // Change colour for scrolling zone text
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
 
+  M5.Lcd.setBrightness(255);
   // Setup scroll area
   // setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
   setupScrollArea(0, 0);
@@ -128,7 +129,7 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
     String hexD2 = String(data2, HEX);
 
     // Calculate color intensity based on data1 and data2 values
-    uint8_t intensity = 128+((data1 + data2) / 2.0) / 127.0 * 255;
+    uint8_t intensity = 128 + (((data1 + data2) << 7) / 255);
 
     // Calculate actual color based on name length and channel number
     uint8_t color = (name.length() + channel) % 256;
@@ -146,7 +147,8 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
   
       yDraw = scroll_line();
       // Display MIDI information on the LCD with the calculated text color
-      M5.Lcd.setTextColor(textColor);
+      M5.Lcd.setTextColor(TFT_WHITE, textColor);
+      M5.Lcd.fillRect(250, yDraw, 70, TEXT_HEIGHT, textColor);
       M5.Lcd.drawString(midiInfo.c_str(), 0, yDraw, 2);
     }
 }
@@ -159,7 +161,7 @@ void loop()
   M5.update();
 
   
-  if (midiUsb.read())
+  while (midiUsb.read())
   {
     //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
     midi::MidiType t = midiUsb.getType();

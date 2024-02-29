@@ -8,9 +8,9 @@ int scroll_line() {
         yStart;  // Store the old yStart, this is where we draw the next line
     // Use the record of line lengths to optimise the rectangle size we need to
     // erase the top line
-    // M5.Lcd.fillRect(0,yStart,blank[(yStart-TOP_FIXED_AREA)/TEXT_HEIGHT],TEXT_HEIGHT,
+    //M5.Lcd.fillRect(0,yStart,blank[(yStart-TOP_FIXED_AREA)/TEXT_HEIGHT],TEXT_HEIGHT,
     // TFT_BLACK);
-    M5.Lcd.fillRect(0, yStart, 320, TEXT_HEIGHT, TFT_BLACK);
+    //M5.Lcd.fillRect(0, yStart, 320, TEXT_HEIGHT, TFT_BLACK);
 
     // Change the top of the scroll area
     yStart += TEXT_HEIGHT;
