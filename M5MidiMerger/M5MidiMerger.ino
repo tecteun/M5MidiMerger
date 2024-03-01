@@ -135,38 +135,51 @@ void drawMidiInfoTask(void * parameter) {
       }
       M5.update();
   }
-}
-// Function to draw MIDI information on the LCD
+}// Color table in RGB565 format
+uint16_t colorTable[] = {0x000F, 0x03E0, 0x7800, 0x780F, 0x7BE0, 0xC618, 0x7BEF, 0x001F, 0xB7E0, 0x07E0, 0xFFE0, 0xFDA0, 0xFC9F, 0x07FF, 0x03EF, 0xF800, 0xF81F,
+                         /* Additional 30 bright colors */
+                         0xFFFF, 0x07FF, 0xF81F, 0xFFE0, 0xF83E, 0x07E0, 0x001F, 0x8410, 0x0400, 0x0200, 0x83E0, 0x83EF, 0x83FF, 0xC300, 0xFD20, 0xFBE0,
+                         0xFBDF, 0x839F, 0xFF9E, 0xF79C, 0x7BEF, 0x7B6D, 0x7B4C, 0x73AE, 0x738E, 0x736D, 0x6B4D, 0x6B2C, 0x6B0C, 0x62EC};
+
 void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::DataByte data2, midi::Channel channel) {
+    // Convert MIDI data to hexadecimal strings
     // Convert MIDI data to hexadecimal strings
     String hexD1 = String(data1, HEX);
     String hexD2 = String(data2, HEX);
 
-    // Calculate color intensity based on data1 and data2 values
-    uint8_t intensity = 128 + (((data1 + data2) << 7) / 255);
 
-    // Calculate actual color based on name length and channel number
-    uint8_t color = (name.length() + channel) % 256;
+    // Calculate color intensity based on data2 value
+    uint8_t intensity = data2 * 2;
 
-    // Combine intensity and color to create the final text color
-    uint16_t textColor = (intensity << 8) | color;
+    // Calculate actual color based on data1 and type values
+    uint16_t color = colorTable[data1 % (sizeof(colorTable) / sizeof(colorTable[0]))];
+
+    // Combine intensity and color to create the final text color in RGB565 format
+    // Extract red, green, and blue components from the color
+    uint8_t r = (color >> 11) & 0x1F;
+    uint8_t g = (color >> 5) & 0x3F;
+    uint8_t b = color & 0x1F;
+    
+    // Apply intensity to each component
+    r = (r * intensity) / 255;
+    g = (g * intensity) / 255;
+    b = (b * intensity) / 255;
+    
+    // Combine the components back into a single color
+    uint16_t textColor = (r << 11) | (g << 5) | b;
 
     if(type != 248){
       // Create a string with MIDI information
-      String midiInfo = name + " " +
-                        "Type: " + String(type) +
-                        ", 0x" + hexD1 +
-                        ", 0x" + hexD2 +
-                        ", Channel: " + String(channel);
+      char midiInfo[100];
+      sprintf(midiInfo, "%s Type: %d, 0x%s, 0x%s, Channel: %d", name, type, hexD1, hexD2, channel);
   
       yDraw = scroll_line();
       // Display MIDI information on the LCD with the calculated text color
       M5.Lcd.setTextColor(TFT_WHITE, textColor);
       
-      M5.Lcd.drawString(midiInfo.c_str(), 0, yDraw, 2);
+      M5.Lcd.drawString(midiInfo, 0, yDraw, 2);
     }
 }
-
 
 void loop()
 {
