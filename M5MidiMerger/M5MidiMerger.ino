@@ -149,6 +149,8 @@ void drawMidiInfoTask(void * parameter) {
   M5.Lcd.setBrightness(255);
   MidiData midiData;
   while (true) {
+      //this makes m5stack more silent
+      dacWrite(25,0);
       while (xQueueReceive(midiQueue, &midiData, 0)) {
           drawMidiInfo(midiData.name, midiData.type, midiData.data1, midiData.data2, midiData.channel);
       }
