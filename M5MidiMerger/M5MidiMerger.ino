@@ -1,6 +1,8 @@
 
 #include <SoftwareSerial.h>
 #include <M5Stack.h>
+#include "Free_Fonts.h"  // Include the header file attached to this sketch
+
 #include <usbhub.h>
 #include <MIDI.h>
 #include <UHS2-MIDI.h>
@@ -30,7 +32,7 @@ bool toggle = false;
 
 
 // The scrolling area must be a integral multiple of TEXT_HEIGHT
-#define TEXT_HEIGHT 16  // Height of text to be printed and scrolled
+#define TEXT_HEIGHT 12  // Height of text to be printed and scrolled
 #define TOP_FIXED_AREA \
     14  // Number of lines in top fixed area (lines counted from top of screen)
 #define BOT_FIXED_AREA \
@@ -46,15 +48,6 @@ uint16_t yArea = YMAX - TOP_FIXED_AREA - BOT_FIXED_AREA;
 // uint16_t yDraw = YMAX - BOT_FIXED_AREA - TEXT_HEIGHT;
 uint16_t yDraw = 0;
 
-// Keep track of the drawing x coordinate
-uint16_t xPos = 0;
-
-// For the byte we read from the serial port
-byte data = 0;
-
-// A few test variables used during debugging
-boolean change_colour = 1;
-boolean selected      = 1;
 
 // Define the structure for MIDI data
 struct MidiData {
@@ -116,7 +109,10 @@ QueueHandle_t midiQueue = xQueueCreate(10, sizeof(MidiData));
 void drawMidiInfoTask(void * parameter) {
   M5.begin();
   M5.Power.begin();
+  
   M5.Lcd.setTextPadding(M5.Lcd.width());
+  M5.Lcd.setFreeFont(TT1);
+  M5.Lcd.setTextSize(2);
   M5.Lcd.fillScreen(TFT_BLACK);
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
   M5.Lcd.fillRect(0, 0, 320, TEXT_HEIGHT, TFT_BLUE);
@@ -171,13 +167,12 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
     if(type != 248){
       // Create a string with MIDI information
       char midiInfo[100];
-      sprintf(midiInfo, "%s Type: %d, 0x%s, 0x%s, Channel: %d", name, type, hexD1, hexD2, channel);
+      sprintf(midiInfo, " %s Type: %d, 0x%s, 0x%s, Channel: %d", name, type, hexD1, hexD2, channel);
   
       yDraw = scroll_line();
       // Display MIDI information on the LCD with the calculated text color
       M5.Lcd.setTextColor(TFT_WHITE, textColor);
-      
-      M5.Lcd.drawString(midiInfo, 0, yDraw, 2);
+      M5.Lcd.drawString(midiInfo, 0, yDraw, GFXFF); //GFXFF == custom font
     }
 }
 
