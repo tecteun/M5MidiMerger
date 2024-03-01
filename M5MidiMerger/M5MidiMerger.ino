@@ -1,13 +1,18 @@
 
 #include <SoftwareSerial.h>
 #include <M5Stack.h>
-#include "Free_Fonts.h"  // Include the header file attached to this sketch
-
+#include <Free_Fonts.h>
 #include <usbhub.h>
 #include <MIDI.h>
 #include <UHS2-MIDI.h>
-//https://github.com/TheKikGen/USBMidiKliK
-//send sysex F0 77 77 77 09 F7 to reset interface to serial mode, to flash
+#include <BLEMIDI_Transport.h>
+#include <hardware/BLEMIDI_Client_ESP32.h>
+
+#define BLEMIDI_CREATE_CLIENT_INSTANCE(DeviceName, Name) \
+  BLEMIDI_NAMESPACE::BLEMIDI_Transport<BLEMIDI_NAMESPACE::BLEMIDI_Client_ESP32> BLE##Name(DeviceName); \
+  MIDI_NAMESPACE::MidiInterface<BLEMIDI_NAMESPACE::BLEMIDI_Transport<BLEMIDI_NAMESPACE::BLEMIDI_Client_ESP32>, BLEMIDI_NAMESPACE::MySettings> Name((BLEMIDI_NAMESPACE::BLEMIDI_Transport<BLEMIDI_NAMESPACE::BLEMIDI_Client_ESP32> &)BLE##Name);
+
+#include <hardware/BLEMIDI_ESP32_NimBLE.h>
 
 #define MIDI_BAUDRATE 31250
 #define RXD2 16
@@ -28,26 +33,19 @@ SoftwareSerial swSerial(RXD2, TXD2);
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1,    midiA);
 MIDI_CREATE_INSTANCE(SoftwareSerial, swSerial,    midiB);
-bool toggle = false;
 
+BLEMIDI_CREATE_INSTANCE("M5MidiMerger", midiBle);
+BLEMIDI_CREATE_CLIENT_INSTANCE("", midiBleClient);
+
+bool toggle = false;
+bool bleClientMode = false;
 
 // The scrolling area must be a integral multiple of TEXT_HEIGHT
 #define TEXT_HEIGHT 12  // Height of text to be printed and scrolled
-#define TOP_FIXED_AREA \
-    14  // Number of lines in top fixed area (lines counted from top of screen)
-#define BOT_FIXED_AREA \
-    0  // Number of lines in bottom fixed area (lines counted from bottom of
-       // screen).
 #define YMAX 240  // Bottom of screen area
-
+uint16_t yDraw = 0;
 // The initial y coordinate of the top of the scrolling area
 uint16_t yStart = 0;
-// yArea must be a integral multiple of TEXT_HEIGHT
-uint16_t yArea = YMAX - TOP_FIXED_AREA - BOT_FIXED_AREA;
-// The initial y coordinate of the top of the bottom text line
-// uint16_t yDraw = YMAX - BOT_FIXED_AREA - TEXT_HEIGHT;
-uint16_t yDraw = 0;
-
 
 // Define the structure for MIDI data
 struct MidiData {
@@ -65,8 +63,6 @@ void setup()
   ledcDetachPin(SPEAKER_PIN);
   pinMode(SPEAKER_PIN, INPUT);
 
-  // Setup scroll area
-  // setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
   setupScrollArea(0, 0);
 
   Serial1.begin(MIDI_BAUDRATE, SERIAL_8N1, RXD1, TXD1);
@@ -85,6 +81,14 @@ void setup()
   midiUsb1.turnThruOff();
   midiUsb2.turnThruOff();
   midiUsb3.turnThruOff();
+
+  if (bleClientMode) {
+    midiBleClient.begin(MIDI_CHANNEL_OMNI);
+    midiBleClient.turnThruOff();
+  } else {
+    midiBle.begin(MIDI_CHANNEL_OMNI);
+    midiBle.turnThruOff();
+  }
 
   if (Usb.Init() == -1) {
     while (1); //halt
@@ -124,12 +128,16 @@ void drawMidiInfoTask(void * parameter) {
   M5.Lcd.setBrightness(255);
   MidiData midiData;
   while (true) {
+      M5.update();
       //this makes m5stack more silent
       dacWrite(25,0);
+      if (bleClientMode && BLEmidiBleClient.available() > 0) {
+        BLEmidiBleClient.read();
+      }
       while (xQueueReceive(midiQueue, &midiData, portMAX_DELAY)) {
           drawMidiInfo(midiData.name, midiData.type, midiData.data1, midiData.data2, midiData.channel);
       }
-      M5.update();
+      vTaskDelay(1 / portTICK_PERIOD_MS);  //Feed the watchdog of FreeRTOS.        
   }
 }// Color table in RGB565 format
 uint16_t colorTable[] = {0x000F, 0x03E0, 0x7800, 0x780F, 0x7BE0, 0xC618, 0x7BEF, 0x001F, 0xB7E0, 0x07E0, 0xFFE0, 0xFDA0, 0xFC9F, 0x07FF, 0x03EF, 0xF800, 0xF81F,
@@ -179,7 +187,7 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
 void loop()
 {
   Usb.Task();
-  while (midiUsb.read())
+  if (midiUsb.read())
   {
     MidiData midiData;
     midiData.name = "midiUsb";
@@ -193,6 +201,8 @@ void loop()
     midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+
     // Send MIDI data to the queue
     xQueueSend(midiQueue, &midiData, 0);
   }
@@ -211,6 +221,8 @@ void loop()
     //midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+
     // Send MIDI data to the queue
     xQueueSend(midiQueue, &midiData, 0);
   }
@@ -228,6 +240,8 @@ void loop()
     midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     //midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+
     // Send MIDI data to the queue
     xQueueSend(midiQueue, &midiData, 0);
   }
@@ -245,6 +259,8 @@ void loop()
     midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     //midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+
     // Send MIDI data to the queue
     xQueueSend(midiQueue, &midiData, 0);
   }
@@ -262,6 +278,8 @@ void loop()
     midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+
     // Send MIDI data to the queue
     xQueueSend(midiQueue, &midiData, 0);
   }
@@ -279,6 +297,27 @@ void loop()
     midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, 0);
+  }
+  if (midiBle.read())
+  {
+    MidiData midiData;
+    midiData.name = "midiBle";
+    midiData.type = midiBle.getType();
+    midiData.data1 = midiBle.getData1();
+    midiData.data2 = midiBle.getData2();
+    midiData.channel = midiBle.getChannel();
+    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    //midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+
     // Send MIDI data to the queue
     xQueueSend(midiQueue, &midiData, 0);
   }
