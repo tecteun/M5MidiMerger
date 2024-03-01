@@ -62,30 +62,22 @@ boolean selected      = 1;
 // text lines by just blanking the character we drew
 int blank[19];  // We keep all the strings pixel lengths to optimise the speed
                 // of the top line blanking
-
+// Define the structure for MIDI data
+struct MidiData {
+    String name;
+    midi::MidiType type;
+    midi::DataByte data1;
+    midi::DataByte data2;
+    midi::Channel channel;
+};
 
 void setup()
 {
   pinMode(3,INPUT_PULLUP); 
   pinMode(16,INPUT_PULLUP);
-  // Setup the TFT display
-  M5.begin();
-  M5.Power.begin();
-  // M5.Lcd.setRotation(5); // Must be setRotation(0) for this sketch to work
-  // correctly
-  M5.Lcd.fillScreen(TFT_BLACK);
+  ledcDetachPin(SPEAKER_PIN);
+  pinMode(SPEAKER_PIN, INPUT);
 
-  // Setup baud rate and draw top banner
-  // Serial.begin(115200);
-
-  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
-  M5.Lcd.fillRect(0, 0, 320, TEXT_HEIGHT, TFT_BLUE);
-  M5.Lcd.drawCentreString(" Midi Terminal", 320 / 2, 0, 2);
-
-  // Change colour for scrolling zone text
-  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-
-  M5.Lcd.setBrightness(255);
   // Setup scroll area
   // setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
   setupScrollArea(0, 0);
@@ -121,6 +113,47 @@ void setup()
     while (1); //halt
   }//if (Usb.Init() == -1...
   delay( 200 );
+
+  // Create a new task
+    xTaskCreatePinnedToCore(
+        drawMidiInfoTask,   // Task function
+        "DrawMidiInfoTask", // Task name
+        4096,              // Stack size (in words)
+        NULL,               // Task input parameter
+        1,                  // Task priority
+        NULL, 1                // Task handle
+    );
+}
+
+// Create a queue for MIDI data
+QueueHandle_t midiQueue = xQueueCreate(10, sizeof(MidiData));
+
+// Task to draw MIDI information on the LCD
+void drawMidiInfoTask(void * parameter) {
+  M5.begin();
+  M5.Power.begin();
+  // M5.Lcd.setRotation(5); // Must be setRotation(0) for this sketch to work
+  // correctly
+  M5.Lcd.fillScreen(TFT_BLACK);
+
+  // Setup baud rate and draw top banner
+  // Serial.begin(115200);
+
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
+  M5.Lcd.fillRect(0, 0, 320, TEXT_HEIGHT, TFT_BLUE);
+  M5.Lcd.drawCentreString(" Midi Terminal", 320 / 2, 0, 2);
+
+  // Change colour for scrolling zone text
+  M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  M5.Lcd.setBrightness(255);
+  MidiData midiData;
+  while (true) {
+      while (xQueueReceive(midiQueue, &midiData, 0)) {
+          drawMidiInfo(midiData.name, midiData.type, midiData.data1, midiData.data2, midiData.channel);
+      }
+      M5.update();
+  }
 }
 // Function to draw MIDI information on the LCD
 void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::DataByte data2, midi::Channel channel) {
@@ -157,42 +190,40 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
 void loop()
 {
   Usb.Task();
-  
-  M5.update();
-
-  
   while (midiUsb.read())
   {
-    //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
-    midi::MidiType t = midiUsb.getType();
-    midi::DataByte d1 = midiUsb.getData1();
-    midi::DataByte d2 = midiUsb.getData2();
-    midi::Channel  c = midiUsb.getChannel();
-    drawMidiInfo("midiUsb", t, d1, d2, c);
-    midiA.send(t, d1, d2, c);
-    midiB.send(t, d1, d2, c);
-    midiUsb1.send(t, d1, d2, c);
-    midiUsb2.send(t, d1, d2, c);
-    midiUsb3.send(t, d1, d2, c);
+    MidiData midiData;
+    midiData.name = "midiUsb";
+    midiData.type = midiUsb.getType();
+    midiData.data1 = midiUsb.getData1();
+    midiData.data2 = midiUsb.getData2();
+    midiData.channel = midiUsb.getChannel();
+    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, 0);
   }
-  Usb.Task();
   
   if (midiUsb1.read())
   {
-    //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
-    midi::MidiType t = midiUsb1.getType();
-    midi::DataByte d1 = midiUsb1.getData1();
-    midi::DataByte d2 = midiUsb1.getData2();
-    midi::Channel  c = midiUsb1.getChannel();
-    drawMidiInfo("midiUsb1", t, d1, d2, c);
-    midiA.send(t, d1, d2, c);
-    midiB.send(t, d1, d2, c);
-    midiUsb.send(t, d1, d2, c);
-    midiUsb2.send(t, d1, d2, c);
-    midiUsb3.send(t, d1, d2, c);
+    MidiData midiData;
+    midiData.name = "midiUsb1";
+    midiData.type = midiUsb1.getType();
+    midiData.data1 = midiUsb1.getData1();
+    midiData.data2 = midiUsb1.getData2();
+    midiData.channel = midiUsb1.getChannel();
+    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, portMAX_DELAY);
   }
-  Usb.Task();
-  
+  return;
   if (midiUsb2.read())
   {
     //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
