@@ -58,6 +58,8 @@ struct MidiData {
 
 void setup()
 {
+  M5.begin();
+  M5.Power.begin();
   pinMode(3,INPUT_PULLUP); 
   pinMode(16,INPUT_PULLUP);
   ledcDetachPin(SPEAKER_PIN);
@@ -111,9 +113,6 @@ QueueHandle_t midiQueue = xQueueCreate(10, sizeof(MidiData));
 
 // Task to draw MIDI information on the LCD
 void drawMidiInfoTask(void * parameter) {
-  M5.begin();
-  M5.Power.begin();
-  
   M5.Lcd.setTextPadding(M5.Lcd.width());
   M5.Lcd.setFreeFont(TT1);
   M5.Lcd.setTextSize(2);
