@@ -56,12 +56,6 @@ byte data = 0;
 boolean change_colour = 1;
 boolean selected      = 1;
 
-// We have to blank the top line each time the display is scrolled, but this
-// takes up to 13 milliseconds for a full width line, meanwhile the serial
-// buffer may be filling... and overflowing We can speed up scrolling of short
-// text lines by just blanking the character we drew
-int blank[19];  // We keep all the strings pixel lengths to optimise the speed
-                // of the top line blanking
 // Define the structure for MIDI data
 struct MidiData {
     String name;
@@ -82,18 +76,8 @@ void setup()
   // setupScrollArea(TOP_FIXED_AREA, BOT_FIXED_AREA);
   setupScrollArea(0, 0);
 
-  // Zero the array
-  for (byte i = 0; i < 18; i++) blank[i] = 0;
-
-  
-  // Make Arduino transparent for serial communications from and to USB(client-hid)
-  //pinMode(0,INPUT); // Arduino RX - ATMEGA8U2 TX
-  //pinMode(1,INPUT); // Arduino TX - ATMEGA8U2 RX
   Serial1.begin(MIDI_BAUDRATE, SERIAL_8N1, RXD1, TXD1);
   swSerial.begin(MIDI_BAUDRATE, SWSERIAL_8N1);
-  
-  //pinMode(LED_BUILTIN, OUTPUT);
-  // Initiate MIDI communications, listen to all channels
 
   midiA.begin(MIDI_CHANNEL_OMNI);
   midiB.begin(MIDI_CHANNEL_OMNI);  
@@ -114,7 +98,7 @@ void setup()
   }//if (Usb.Init() == -1...
   delay( 200 );
 
-  // Create a new task
+  // Create a new task on core 1 to handle the drawing:
     xTaskCreatePinnedToCore(
         drawMidiInfoTask,   // Task function
         "DrawMidiInfoTask", // Task name
@@ -132,13 +116,8 @@ QueueHandle_t midiQueue = xQueueCreate(10, sizeof(MidiData));
 void drawMidiInfoTask(void * parameter) {
   M5.begin();
   M5.Power.begin();
-  // M5.Lcd.setRotation(5); // Must be setRotation(0) for this sketch to work
-  // correctly
+  M5.Lcd.setTextPadding(M5.Lcd.width());
   M5.Lcd.fillScreen(TFT_BLACK);
-
-  // Setup baud rate and draw top banner
-  // Serial.begin(115200);
-
   M5.Lcd.setTextColor(TFT_WHITE, TFT_BLUE);
   M5.Lcd.fillRect(0, 0, 320, TEXT_HEIGHT, TFT_BLUE);
   M5.Lcd.drawCentreString(" Midi Terminal", 320 / 2, 0, 2);
@@ -151,7 +130,7 @@ void drawMidiInfoTask(void * parameter) {
   while (true) {
       //this makes m5stack more silent
       dacWrite(25,0);
-      while (xQueueReceive(midiQueue, &midiData, 0)) {
+      while (xQueueReceive(midiQueue, &midiData, portMAX_DELAY)) {
           drawMidiInfo(midiData.name, midiData.type, midiData.data1, midiData.data2, midiData.channel);
       }
       M5.update();
@@ -183,7 +162,7 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
       yDraw = scroll_line();
       // Display MIDI information on the LCD with the calculated text color
       M5.Lcd.setTextColor(TFT_WHITE, textColor);
-      M5.Lcd.fillRect(250, yDraw, 70, TEXT_HEIGHT, textColor);
+      
       M5.Lcd.drawString(midiInfo.c_str(), 0, yDraw, 2);
     }
 }
@@ -202,6 +181,7 @@ void loop()
     midiData.channel = midiUsb.getChannel();
     midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    //midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
@@ -220,67 +200,78 @@ void loop()
     midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    //midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
     // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, portMAX_DELAY);
+    xQueueSend(midiQueue, &midiData, 0);
   }
-  return;
   if (midiUsb2.read())
   {
-    //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
-    midi::MidiType t = midiUsb2.getType();
-    midi::DataByte d1 = midiUsb2.getData1();
-    midi::DataByte d2 = midiUsb2.getData2();
-    midi::Channel  c = midiUsb2.getChannel();
-    drawMidiInfo("midiUsb2", t, d1, d2, c);
-    midiA.send(t, d1, d2, c);
-    midiB.send(t, d1, d2, c);
-    midiUsb.send(t, d1, d2, c);
-    midiUsb1.send(t, d1, d2, c);
-    midiUsb3.send(t, d1, d2, c);
+    MidiData midiData;
+    midiData.name = "midiUsb2";
+    midiData.type = midiUsb2.getType();
+    midiData.data1 = midiUsb2.getData1();
+    midiData.data2 = midiUsb2.getData2();
+    midiData.channel = midiUsb2.getChannel();
+    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    //midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, 0);
   }
-  Usb.Task();
-  
   if (midiUsb3.read())
   {
-    //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
-    midi::MidiType t = midiUsb3.getType();
-    midi::DataByte d1 = midiUsb3.getData1();
-    midi::DataByte d2 = midiUsb3.getData2();
-    midi::Channel  c = midiUsb3.getChannel();
-    drawMidiInfo("midiUsb3", t, d1, d2, c);
-    midiA.send(t, d1, d2, c);
-    midiB.send(t, d1, d2, c);
-    midiUsb.send(t, d1, d2, c);
-    midiUsb1.send(t, d1, d2, c);
-    midiUsb2.send(t, d1, d2, c);
+    MidiData midiData;
+    midiData.name = "midiUsb3";
+    midiData.type = midiUsb3.getType();
+    midiData.data1 = midiUsb3.getData1();
+    midiData.data2 = midiUsb3.getData2();
+    midiData.channel = midiUsb3.getChannel();
+    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    //midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, 0);
   }
-  Usb.Task();
-  
   if (midiA.read())
   {
-    //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
-    midi::MidiType t = midiA.getType();
-    midi::DataByte d1 = midiA.getData1();
-    midi::DataByte d2 = midiA.getData2();
-    midi::Channel  c = midiA.getChannel();
-    drawMidiInfo("midiA", t, d1, d2, c);
-    midiB.send(t, d1, d2, c);
-    midiUsb.send(t, d1, d2, c);
+    MidiData midiData;
+    midiData.name = "midiA";
+    midiData.type = midiA.getType();
+    midiData.data1 = midiA.getData1();
+    midiData.data2 = midiA.getData2();
+    midiData.channel = midiA.getChannel();
+    //midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, 0);
   }
-  Usb.Task();
-  
   if (midiB.read())
   {
-    //digitalWrite(LED_BUILTIN, toggle = !toggle ? LOW : HIGH);
-    midi::MidiType t = midiB.getType();
-    midi::DataByte d1 = midiB.getData1();
-    midi::DataByte d2 = midiB.getData2();
-    midi::Channel  c = midiB.getChannel();
-    drawMidiInfo("midiB", t, d1, d2, c);
-    midiA.send(t, d1, d2, c);
-    midiUsb.send(t, d1, d2, c);
+    MidiData midiData;
+    midiData.name = "midiB";
+    midiData.type = midiB.getType();
+    midiData.data1 = midiB.getData1();
+    midiData.data2 = midiB.getData2();
+    midiData.channel = midiB.getChannel();
+    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    //midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+    // Send MIDI data to the queue
+    xQueueSend(midiQueue, &midiData, 0);
   }
-  
 }
