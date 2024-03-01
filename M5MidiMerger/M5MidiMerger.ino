@@ -130,7 +130,8 @@ void drawMidiInfoTask(void * parameter) {
   while (true) {
       M5.update();
       //this makes m5stack more silent
-      dacWrite(25,0);
+      //dacWrite(25,0);
+      //it does not, bridge the amp labeled jumper on the board itself to disable the amp, stoppinging it from picking up noise
       if (bleClientMode && BLEmidiBleClient.available() > 0) {
         BLEmidiBleClient.read();
       }
