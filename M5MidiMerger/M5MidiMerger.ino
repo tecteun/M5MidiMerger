@@ -22,12 +22,17 @@
 
 USB Usb;
 
-// support one hub, four midi devices
+// support two hubs, four midi devices
 USBHub Hub(&Usb);
+USBHub Hub1(&Usb);
+
 UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb);
 UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb1);
 UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb2);
 UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb3);
+UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb4);
+UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb5);
+UHS2MIDI_CREATE_INSTANCE(&Usb, 0, midiUsb6);
 
 SoftwareSerial swSerial(RXD2, TXD2);
 
@@ -36,6 +41,12 @@ MIDI_CREATE_INSTANCE(SoftwareSerial, swSerial,    midiB);
 
 BLEMIDI_CREATE_INSTANCE("M5MidiMerger", midiBle);
 BLEMIDI_CREATE_CLIENT_INSTANCE("", midiBleClient);
+
+#define MIDI_UHS2_DEVICE_COUNT 7
+
+midi::MidiInterface<uhs2Midi::uhs2MidiTransport>* list_devices_uhs2[MIDI_UHS2_DEVICE_COUNT] = {
+  &midiUsb, &midiUsb1, &midiUsb2, &midiUsb3, &midiUsb4, &midiUsb5, &midiUsb6
+};
 
 bool toggle = false;
 bool bleClientMode = false;
@@ -55,6 +66,65 @@ struct MidiData {
     midi::DataByte data2;
     midi::Channel channel;
 };
+
+void send_uhs(midi::MidiType t, midi::DataByte d1, midi::DataByte d2, midi::Channel ch, int exclude = -1) {
+  for (int i = 0; i < MIDI_UHS2_DEVICE_COUNT; i++) {
+    if (exclude != i) {  // do not send to self, no passthrough
+      list_devices_uhs2[i]->send(t, d1, d2, ch);
+    }
+  }
+}
+void send_uhs_sysex(midi::DataByte d1, midi::DataByte d2, const byte* sysexArray, int exclude = -1) {
+  for (int i = 0; i < MIDI_UHS2_DEVICE_COUNT; i++) {
+    if (exclude != i) {  // do not send to self, no passthrough
+      int mSxLen = d1 + 256 * d2;
+      list_devices_uhs2[i]->sendSysEx(mSxLen, sysexArray, true);
+    }
+  }
+}
+void send_serial(midi::MidiType t, midi::DataByte d1, midi::DataByte d2, midi::Channel ch, int exclude = -1) {
+  switch(exclude){
+    case 0:
+    midiB.send(t, d1, d2, ch);
+    break;
+    case 1:
+    midiA.send(t, d1, d2, ch);
+    default: 
+    midiA.send(t, d1, d2, ch);
+    midiB.send(t, d1, d2, ch);
+    break;
+  }
+}
+void send_serial_sysex(midi::DataByte d1, midi::DataByte d2, const byte* sysexArray, int exclude = -1) {
+  int mSxLen = d1 + 256 * d2;
+  switch(exclude){
+    case 0:
+    midiB.sendSysEx(mSxLen, sysexArray, true);
+    break;
+    case 1:
+    midiA.sendSysEx(mSxLen, sysexArray, true);
+    default: 
+    midiA.sendSysEx(mSxLen, sysexArray, true);
+    midiB.sendSysEx(mSxLen, sysexArray, true);
+    break;
+  }
+}
+
+void send_ble(midi::MidiType t, midi::DataByte d1, midi::DataByte d2, midi::Channel ch) {
+  if (bleClientMode) {
+    midiBleClient.send(t, d1, d2, ch);
+  } else {
+    midiBle.send(t, d1, d2, ch);
+  }
+}
+void send_ble_sysex(midi::DataByte d1, midi::DataByte d2, const byte* sysexArray) {
+  int mSxLen = d1 + 256 * d2;
+    if (bleClientMode) {
+    midiBleClient.sendSysEx(mSxLen, sysexArray, true);
+  } else {
+    midiBle.sendSysEx(mSxLen, sysexArray, true);
+  }
+}
 
 void setup()
 {
@@ -187,138 +257,103 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
 void loop()
 {
   Usb.Task();
-  if (midiUsb.read())
-  {
-    MidiData midiData;
-    midiData.name = "midiUsb";
-    midiData.type = midiUsb.getType();
-    midiData.data1 = midiUsb.getData1();
-    midiData.data2 = midiUsb.getData2();
-    midiData.channel = midiUsb.getChannel();
-    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    //midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
-  }
-  
-  if (midiUsb1.read())
-  {
-    MidiData midiData;
-    midiData.name = "midiUsb1";
-    midiData.type = midiUsb1.getType();
-    midiData.data1 = midiUsb1.getData1();
-    midiData.data2 = midiUsb1.getData2();
-    midiData.channel = midiUsb1.getChannel();
-    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    //midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
-  }
-  if (midiUsb2.read())
-  {
-    MidiData midiData;
-    midiData.name = "midiUsb2";
-    midiData.type = midiUsb2.getType();
-    midiData.data1 = midiUsb2.getData1();
-    midiData.data2 = midiUsb2.getData2();
-    midiData.channel = midiUsb2.getChannel();
-    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    //midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
-  }
-  if (midiUsb3.read())
-  {
-    MidiData midiData;
-    midiData.name = "midiUsb3";
-    midiData.type = midiUsb3.getType();
-    midiData.data1 = midiUsb3.getData1();
-    midiData.data2 = midiUsb3.getData2();
-    midiData.channel = midiUsb3.getChannel();
-    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    //midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
+  for (int c = 0; c < MIDI_UHS2_DEVICE_COUNT; c++) {
+    if (list_devices_uhs2[c]->read()) {
+      midi::MidiType t = list_devices_uhs2[c]->getType();
+      if (t != midi::SystemExclusive) {
+        MidiData midiData;
+        midiData.name = "midiUsb" + c;
+        midiData.type = list_devices_uhs2[c]->getType();
+        midiData.data1 = list_devices_uhs2[c]->getData1();
+        midiData.data2 = list_devices_uhs2[c]->getData2();
+        midiData.channel = list_devices_uhs2[c]->getChannel();
+        send_serial(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+        send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+        send_uhs(midiData.type, midiData.data1, midiData.data2, midiData.channel, c);  // do not send to self, no passthrough
+        // Send MIDI data to the queue for display, with no wait
+        xQueueSend(midiQueue, &midiData, 0);
+      } else {
+        const byte* sysexArray = list_devices_uhs2[c]->getSysExArray();
+        midi::DataByte d1 = list_devices_uhs2[c]->getData1();
+        midi::DataByte d2 = list_devices_uhs2[c]->getData2();
+        send_serial_sysex(d1, d2, sysexArray);
+        send_ble_sysex(d1, d2, sysexArray);
+        send_uhs_sysex(d1, d2, sysexArray, c);  // do not send to self, no passthrough
+      }
+    }
   }
   if (midiA.read())
   {
-    MidiData midiData;
-    midiData.name = "midiA";
-    midiData.type = midiA.getType();
-    midiData.data1 = midiA.getData1();
-    midiData.data2 = midiA.getData2();
-    midiData.channel = midiA.getChannel();
-    //midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
+    midi::MidiType t = midiA.getType();
+    if (t != midi::SystemExclusive) {
+      MidiData midiData;
+      midiData.name = "midiA";
+      midiData.type = midiA.getType();
+      midiData.data1 = midiA.getData1();
+      midiData.data2 = midiA.getData2();
+      midiData.channel = midiA.getChannel();
+      send_serial(midiData.type, midiData.data1, midiData.data2, midiData.channel, 0);
+      send_uhs(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+      send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+  
+      // Send MIDI data to the queue
+      xQueueSend(midiQueue, &midiData, 0);
+    } else {
+      const byte* sysexArray = midiA.getSysExArray();
+      midi::DataByte d1 = midiA.getData1();
+      midi::DataByte d2 = midiA.getData2();
+      send_serial_sysex(d1, d2, sysexArray, 0);// do not send to self, no passthrough
+      send_ble_sysex(d1, d2, sysexArray);
+      send_uhs_sysex(d1, d2, sysexArray);  
+    }
   }
   if (midiB.read())
   {
-    MidiData midiData;
-    midiData.name = "midiB";
-    midiData.type = midiB.getType();
-    midiData.data1 = midiB.getData1();
-    midiData.data2 = midiB.getData2();
-    midiData.channel = midiB.getChannel();
-    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    //midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
+    midi::MidiType t = midiB.getType();
+    if (t != midi::SystemExclusive) {
+      MidiData midiData;
+      midiData.name = "midiB";
+      midiData.type = midiB.getType();
+      midiData.data1 = midiB.getData1();
+      midiData.data2 = midiB.getData2();
+      midiData.channel = midiB.getChannel();
+      send_serial(midiData.type, midiData.data1, midiData.data2, midiData.channel, 1);
+      send_uhs(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+      send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+      // Send MIDI data to the queue
+      xQueueSend(midiQueue, &midiData, 0);
+    } else {
+      const byte* sysexArray = midiB.getSysExArray();
+      midi::DataByte d1 = midiB.getData1();
+      midi::DataByte d2 = midiB.getData2();
+      send_serial_sysex(d1, d2, sysexArray, 0);// do not send to self, no passthrough
+      send_ble_sysex(d1, d2, sysexArray);
+      send_uhs_sysex(d1, d2, sysexArray);  
+    }
   }
   if (midiBle.read())
   {
-    MidiData midiData;
-    midiData.name = "midiBle";
-    midiData.type = midiBle.getType();
-    midiData.data1 = midiBle.getData1();
-    midiData.data2 = midiBle.getData2();
-    midiData.channel = midiBle.getChannel();
-    midiA.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiB.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb1.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb2.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    midiUsb3.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-    //midiBle.send(midiData.type, midiData.data1, midiData.data2, midiData.channel);
-
-    // Send MIDI data to the queue
-    xQueueSend(midiQueue, &midiData, 0);
+    midi::MidiType t = midiBle.getType();
+    if (t != midi::SystemExclusive) {
+      MidiData midiData;
+      midiData.name = "midiBle";
+      midiData.type = midiBle.getType();
+      midiData.data1 = midiBle.getData1();
+      midiData.data2 = midiBle.getData2();
+      midiData.channel = midiBle.getChannel();
+      send_serial(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+      send_uhs(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+      //send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
+  
+      // Send MIDI data to the queue
+      xQueueSend(midiQueue, &midiData, 0);
+    } else {
+      const byte* sysexArray = midiBle.getSysExArray();
+      midi::DataByte d1 = midiBle.getData1();
+      midi::DataByte d2 = midiBle.getData2();
+      send_serial_sysex(d1, d2, sysexArray);
+      //send_ble_sysex(d1, d2, sysexArray);// do not send to self, no passthrough
+      send_uhs_sysex(d1, d2, sysexArray);  
+    }
   }
 }
