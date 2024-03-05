@@ -179,7 +179,7 @@ void setup()
 }
 
 // Create a queue for MIDI data
-QueueHandle_t midiQueue = xQueueCreate(10, sizeof(MidiData));
+QueueHandle_t midiQueue = xQueueCreate(1, sizeof(MidiData));
 
 // Task to draw MIDI information on the LCD
 void drawMidiInfoTask(void * parameter) {
@@ -271,7 +271,7 @@ void loop()
         send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
         send_uhs(midiData.type, midiData.data1, midiData.data2, midiData.channel, c);  // do not send to self, no passthrough
         // Send MIDI data to the queue for display, with no wait
-        xQueueSend(midiQueue, &midiData, 0);
+        xQueueOverwrite(midiQueue, &midiData);
       } else {
         const byte* sysexArray = list_devices_uhs2[c]->getSysExArray();
         midi::DataByte d1 = list_devices_uhs2[c]->getData1();
@@ -297,7 +297,7 @@ void loop()
       send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
   
       // Send MIDI data to the queue
-      xQueueSend(midiQueue, &midiData, 0);
+      xQueueOverwrite(midiQueue, &midiData);
     } else {
       const byte* sysexArray = midiA.getSysExArray();
       midi::DataByte d1 = midiA.getData1();
@@ -321,7 +321,7 @@ void loop()
       send_uhs(midiData.type, midiData.data1, midiData.data2, midiData.channel);
       send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
       // Send MIDI data to the queue
-      xQueueSend(midiQueue, &midiData, 0);
+      xQueueOverwrite(midiQueue, &midiData);
     } else {
       const byte* sysexArray = midiB.getSysExArray();
       midi::DataByte d1 = midiB.getData1();
@@ -346,7 +346,7 @@ void loop()
       //send_ble(midiData.type, midiData.data1, midiData.data2, midiData.channel);
   
       // Send MIDI data to the queue
-      xQueueSend(midiQueue, &midiData, 0);
+      xQueueOverwrite(midiQueue, &midiData);
     } else {
       const byte* sysexArray = midiBle.getSysExArray();
       midi::DataByte d1 = midiBle.getData1();
