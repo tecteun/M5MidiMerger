@@ -201,13 +201,10 @@ void drawMidiInfoTask(void * parameter) {
       //this makes m5stack more silent
       //dacWrite(25,0);
       //it does not, bridge the amp labeled jumper on the board itself to disable the amp, stoppinging it from picking up noise
-      if (bleClientMode && BLEmidiBleClient.available() > 0) {
-        BLEmidiBleClient.read();
-      }
-      while (xQueueReceive(midiQueue, &midiData, portMAX_DELAY)) {
+      if (xQueueReceive(midiQueue, &midiData, 0)) {
           drawMidiInfo(midiData.name, midiData.type, midiData.data1, midiData.data2, midiData.channel);
       }
-      vTaskDelay(1 / portTICK_PERIOD_MS);  //Feed the watchdog of FreeRTOS.        
+      vTaskDelay(9 / portTICK_PERIOD_MS);  //block for 10ms, aim for a ~60fps framerate cap, so poll at ~120fps
   }
 }// Color table in RGB565 format
 uint16_t colorTable[] = {0x000F, 0x03E0, 0x7800, 0x780F, 0x7BE0, 0xC618, 0x7BEF, 0x001F, 0xB7E0, 0x07E0, 0xFFE0, 0xFDA0, 0xFC9F, 0x07FF, 0x03EF, 0xF800, 0xF81F,
@@ -257,6 +254,9 @@ void drawMidiInfo(String name, midi::MidiType type, midi::DataByte data1, midi::
 void loop()
 {
   Usb.Task();
+  if (bleClientMode && BLEmidiBleClient.available() > 0) {
+     BLEmidiBleClient.read();
+  }
   for (int c = 0; c < MIDI_UHS2_DEVICE_COUNT; c++) {
     if (list_devices_uhs2[c]->read()) {
       midi::MidiType t = list_devices_uhs2[c]->getType();
